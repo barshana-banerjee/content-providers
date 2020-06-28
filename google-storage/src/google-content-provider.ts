@@ -1,12 +1,21 @@
-import * as Storage from "@google-cloud/storage";
-import googleUtility from "./googleUtility";
+import {
+  Storage,
+  CreateBucketResponse,
+  DeleteBucketResponse,
+} from "@google-cloud/storage";
+import utils from "./googleUtility";
+
+import { Bucket, File } from "@google-cloud/storage";
 import { Observable, of } from "rxjs";
 import { from } from "rxjs";
 import { AjaxResponse } from "rxjs/ajax";
 import { catchError, map } from "rxjs/operators";
+// @ts-ignore
 import { filePathLocal, fileName, bucketName } from "../config";
 
-function createSuccessAjaxResponse(response: any): AjaxResponse {
+function createSuccessAjaxResponse(
+  response: CreateBucketResponse[1]
+): AjaxResponse {
   return {
     originalEvent: {},
     xhr: {
@@ -29,7 +38,7 @@ function createSuccessAjaxResponse(response: any): AjaxResponse {
   };
 }
 function createSuccessAjaxResponseForDeleteFile(
-  responseDelete: any
+  responseDelete: DeleteBucketResponse[0]
 ): AjaxResponse {
   return {
     originalEvent: {},
@@ -45,7 +54,7 @@ function createSuccessAjaxResponseForDeleteFile(
   };
 }
 
-function createErrorAjaxResponse(status: number, error: any): AjaxResponse {
+function createErrorAjaxResponse(status: number, error: Error): AjaxResponse {
   return {
     originalEvent: {},
     xhr: {},
@@ -58,21 +67,17 @@ function createErrorAjaxResponse(status: number, error: any): AjaxResponse {
 }
 
 export class GoogleProvider {
-  storage: any;
+  storage: Storage;
   bucketName: string;
   fileName: string;
   filePathLocal: string;
 
-  constructor(
-    utility: any,
-    bucketName: string,
-    fileName: string,
-    filePathLocal: string
-  ) {
+  constructor(bucketName: string, fileName: string, filePathLocal: string) {
     // Check if service account exists
-    const serviceAccount = utility.checkServiceAccount();
+    // # TODO Barshana Idk what you want to do in this situation, I'll leave this to you
+    const serviceAccount = utils.checkServiceAccount();
 
-    var storage = new Storage.Storage({
+    var storage = new Storage({
       projectId: serviceAccount.project_id,
       credentials: {
         client_email: serviceAccount.client_email,
@@ -91,16 +96,12 @@ export class GoogleProvider {
   * @param fileName
   * @returns An Observable with the response
   */
-  public get(
-    storage: any,
-    bucketName: string,
-    fileName: string
-  ): Observable<AjaxResponse> {
-    const bucket = storage.bucket(bucketName);
-    const file = bucket.file(fileName);
+  public get(bucketName: string, fileName: string): Observable<AjaxResponse> {
+    const fileBucket = this.storage.bucket(bucketName);
+    const file = fileBucket.file(fileName);
 
     var response = from(file.get()).pipe(
-      map((result: any) => {
+      map((result) => {
         return createSuccessAjaxResponse(result[0]);
       }),
       catchError((error) => of(createErrorAjaxResponse(404, error)))
@@ -114,7 +115,6 @@ export class GoogleProvider {
    * @returns An Observable with the response
    */
   public update(
-    storage: any,
     bucketName: string,
     fileName: string
   ): Observable<AjaxResponse> {
@@ -128,12 +128,12 @@ export class GoogleProvider {
   * @returns An Observable with the response
   */
   public create(
-    storage: any,
     bucketName: string,
     filePathLocal: string
   ): Observable<AjaxResponse> {
     // Uploads a local file to the bucket
-    const bucket = storage.bucket(bucketName);
+    const bucket = this.storage.bucket(bucketName);
+
     var response = from(
       bucket.upload(filePathLocal, {
         // Support for HTTP requests made with `Accept-Encoding: gzip`
@@ -143,12 +143,12 @@ export class GoogleProvider {
         },
       })
     ).pipe(
-      map((result: any) => {
+      map((result) => {
         return createSuccessAjaxResponse(result[0]);
       }),
       catchError((error) => of(createErrorAjaxResponse(404, error)))
     );
-    console.log(`${filePathLocal} uploaded to ${bucketName}.`);
+    console.debug(`${filePathLocal} uploaded to ${bucketName}.`);
     return response;
   }
   /**
@@ -160,17 +160,18 @@ export class GoogleProvider {
   * @returns An Observable with the response
   */
   public save(
-    storage: any,
     bucketName: string,
-	fileName: string,
-	newContent: string
+    fileName: string,
+    newContent: string
   ): Observable<AjaxResponse> {
-    const file = storage.bucket(bucketName).file(fileName);
+    const file = this.storage.bucket(bucketName).file(fileName);
     const contents = newContent;
     var response = from(file.save(contents)).pipe(
-      map((result: any) => {
+      map((result) => {
+        // #TODO  should this be a map? Seems like result isnt being used.
         return createSuccessAjaxResponse(file);
       }),
+      // #TODO is this the right http error code?
       catchError((error) => of(createErrorAjaxResponse(404, error)))
     );
     return response;
@@ -183,15 +184,15 @@ export class GoogleProvider {
   * @returns An Observable with the request response
   */
   public remove(
-    storage: any,
     bucketName: string,
     fileName: string
   ): Observable<AjaxResponse> {
-    const file = storage.bucket(bucketName).file(fileName);
+    const file = this.storage.bucket(bucketName).file(fileName);
     var response = from(file.delete()).pipe(
-      map((result: any) => {
+      map((result) => {
         return createSuccessAjaxResponseForDeleteFile(result[0]);
       }),
+      // #TODO is this the right http error code?
       catchError((error) => of(createErrorAjaxResponse(404, error)))
     );
     return response;
@@ -211,14 +212,6 @@ export class GoogleProvider {
   }
 }
 
-const googleprovider = new GoogleProvider(
-  googleUtility,
-  bucketName,
-  fileName,
-  filePathLocal
-);
-googleprovider.get(
-  googleprovider.storage,
-  "notebook_samples",
-  "Cell Magics.ipynb"
-);
+const googleprovider = new GoogleProvider(bucketName, fileName, filePathLocal);
+
+googleprovider.get("notebook_samples", "Cell Magics.ipynb");

@@ -37,6 +37,8 @@
     "typescript": "^3.8.3"
   },
   "dependencies": {
-    "express": "4.16.2"
+    "@google-cloud/storage": "^5.1.1",
+    "express": "4.16.2",
+    "rxjs": "^6.5.5"
   }
 }
